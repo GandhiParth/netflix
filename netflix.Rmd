@@ -1,0 +1,206 @@
+---
+title: "Netflix"
+author: "Parth Gandhi"
+date: "1/5/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Loading the required libraries
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(naniar)
+library(forcats)
+library(wordcloud)
+library(tm)
+library(SnowballC)
+library(RColorBrewer)
+library(tidytext)
+```
+Loading the dataset from kaggle
+```{r}
+netflix <- read.csv("netflix_titles.csv")
+```
+We look at the structure of the data and check if there are missing values present.
+
+```{r}
+summary(netflix)
+f = function(x){
+  y = any(x == "")
+}
+check.na = apply(netflix,2,f)
+check.na
+```
+We can see that the following variables have missing values:
+1. director
+2. cast
+3. country
+4. date_added
+5.rating
+6. duration
+
+Now we check how many missing values does each column have.
+
+```{r}
+f2 = function(x){
+  y = 0
+  for(i in 1:nrow(netflix)){
+  if(x[i] == ""){
+    y = y + 1
+  }
+    }
+  return(sum(y))
+}
+check.na.sum = apply(netflix,2,f2)
+check.na.sum
+```
+We see that the variable director has the most missing values, followed by cast and country.
+
+For making plots based on the variables of director, cast and country we will remove those values from our dataset and make the required plots.
+
+We start our data visualization by seeing the proportion of TV Shows and Movies on Netflix.
+```{r}
+table(netflix$type)
+data = data.frame(group = c("Movie", "TV Show"),value= c(6131,2676))
+
+data <- data %>% 
+  arrange(desc(group)) %>%
+  mutate(prop = value / sum(data$value) *100) %>%
+  mutate(ypos = cumsum(prop)- 0.5*prop )
+
+# Basic piechart
+ggplot(data, aes(x="", y=prop, fill=group)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) + 
+  geom_text(aes(y = ypos, label = group), color = "white", size=6) +
+  scale_fill_brewer(palette="Set2")
+
+```
+
+```{r}
+100*data$value/sum(data$value)
+```
+We can see that majority of the content on Netflix nearly 70% are Movies while the other 30% are TV Shows.
+
+Now we look the distribtuion of content as per the rating given to it which are divided by the type of the content.
+```{r}
+netflix %>%
+ filter(!(rating %in% c("74 min", "84 min", "66 min", ""))) %>%
+ ggplot() +
+  aes(x = rating, fill = rating) +
+  geom_bar() +
+  scale_fill_hue(direction = 1) +
+  labs(x = "Rating", y = "Count", title = "Rating by Type") +
+  theme_minimal() +
+  facet_wrap(vars(type)) +theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+We see that the maximum TV Shows and Movies are rated TV-MA meaning that they are not suitable for minors under 18 years of age.
+
+We look at the distribtuion of hoiw long aTV Show runs for by looking at the number of seasons for that show.
+
+```{r}
+netflix %>%
+  filter(type %in% "TV Show") %>%
+  ggplot() +
+  aes(x = duration,) +
+  geom_bar(fill = "#FF69B4") +
+  labs(
+    x = "Duration",
+    y = "Cout",
+    title = "Duration of TV Shows"
+  ) +
+  theme_bw() +
+  theme(
+    plot.title = element_text(size = 15L,
+                              face = "bold",
+                              hjust = 0.5),
+    axis.title.x = element_text(face = "bold")
+  ) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+```
+ Most of the shows only run for a season and the TV Shows that move forward for second season drastically decreases. With most TV Shows ending after the 3rd season.
+ 
+ We look at the distribution of the titles from the country where it was produced and their origin.
+
+```{r}
+netflix %>%
+ filter(!str_detect(country,',')) %>%
+ group_by(country) %>%
+ count() %>%
+ arrange(desc(n)) %>%
+ head(20) %>%
+ ggplot() + geom_col(aes(y = reorder(country,n), x = n)) +
+ geom_label(aes(y = reorder(country,n), x = n, label = n)) +
+  labs(title = 'Approx. Number of Titles of each Country',
+       subtitle = 'Top 20 Countries') +
+theme_minimal()
+```
+We see that most of the content on Netflix is produced from the USA while India ranks second but the rest of the contries cannot be compareed to USA for their contribtuion on the Content on Netflix.
+
+This also indicates that most of content on Netflix is in English language.
+
+Now we look at the various Genres of the content available on Netflix.
+```{r}
+netflix %>%
+ select(listed_in) %>%
+ mutate(listed_in = str_split(listed_in,',')) %>%
+ unnest(listed_in) %>%
+ group_by(listed_in) %>%
+ count() %>%
+ arrange(desc(n)) %>%
+ head(30) %>%
+ ggplot() + geom_col(aes(y = reorder(listed_in,n), x = n), fill = "green") +
+ labs(title = 'Themes / Genre of Titles',
+     x = '# of Titles',
+     y = 'Theme / Genre') +
+    theme_light()
+```
+The most of content on Netflix consists of International Movies.
+
+We look at the most frequent words used in the Title of Movies.
+```{r}
+desc_words_m <- netflix %>% select(type, show_id, description) %>%
+  filter(type == "Movie") %>% 
+    unnest_tokens(word, description) %>%
+    anti_join(stop_words)
+
+count_word <- desc_words_m %>%
+   count(word, sort = TRUE)
+
+
+wordcloud(words = count_word$word,  
+          freq = count_word$n, 
+          min.freq = 50,  
+          max.words = nrow(count_word), 
+          random.order = FALSE,  
+          rot.per = 0.1,  
+          colors = brewer.pal(8, "Dark2")) 
+```
+We see that Life, Woman, Friends, Love, Family, Home and many more are the commonly used words found in the titles of the movie.
+
+We do it similarly for the titles of TV Show.
+```{r}
+desc_words_tv <- netflix %>% select(type, show_id, description) %>%
+  filter(type == "TV Show") %>% 
+    unnest_tokens(word, description) %>%
+    anti_join(stop_words)
+
+count_word <- desc_words_tv %>%
+   count(word, sort = TRUE)
+
+
+wordcloud(words = count_word$word,  
+          freq = count_word$n, 
+          min.freq = 30,  
+          max.words = nrow(count_word), 
+          random.order = FALSE,  
+          rot.per = 0.1,  
+          colors = brewer.pal(8, "Dark2")) 
+```
+
+We see that Series, Family, Love, Life and more are the most commonly used words in title of TV Shows.
+
+
